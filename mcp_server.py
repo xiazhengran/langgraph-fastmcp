@@ -1,10 +1,12 @@
 """
 MCP 服务器模块 (FastMCP 实现)
-提供工具能力: add, multiply, concat_and_md5_truncate
+提供工具能力: add, multiply, concat_and_md5_truncate, search_metrics
 """
 
 import hashlib
+from typing import List, Dict, Any
 from fastmcp import FastMCP
+import httpx
 
 from MysqlUtils import mysql_util
 
@@ -75,6 +77,60 @@ def query_models_val_detail(task_id: int, column: str) -> str:
     """
 
     return mysql_util.query_models_val_detail(task_id, column)
+
+
+@mcp.tool()
+def search_metrics(
+    value: str,
+    column_name: str = "metric_name_cn",
+    n_results: int = 3
+) -> Dict[str, Any]:
+    """
+    从知识库中检索相关的指标信息
+    
+    Args:
+        value: 搜索的关键词，例如 "用户活跃度"
+        column_name: 要搜索的字段名，默认为 "metric_name_cn"（指标中文名）
+        n_results: 返回结果数量，默认为 3
+        
+    Returns:
+        包含检索结果的字典，每个结果包含：
+        - metric_name: 指标英文名
+        - metric_name_cn: 指标中文名
+        - description: 描述
+        - calculation_method: 计算方法
+        - usage_guide: 使用指南
+        - source_table: 来源表
+        - similarity_score: 相似度得分
+    """
+    url = "http://localhost:8899/search_by_column_value"
+    
+    payload = {
+        "column_name": column_name,
+        "value": value,
+        "n_results": n_results
+    }
+    
+    try:
+        with httpx.Client() as client:
+            response = client.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=180.0
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        return {
+            "error": f"HTTP请求失败: {str(e)}",
+            "results": []
+        }
+    except Exception as e:
+        return {
+            "error": f"检索失败: {str(e)}",
+            "results": []
+        }
 
 
 # ============= 服务器启动 =============
