@@ -24,7 +24,12 @@ async def planning_node(state: PlannerState) -> PlannerState:
     """
     user_input = state["user_input"]
     
-    log_step("规划节点", {"user_input": user_input})
+    print("\n" + "="*60)
+    print("📋 规划节点 - 开始思考...")
+    print("="*60)
+    print(f"用户输入: {user_input}\n")
+    print("🤔 LLM 思考过程:")
+    print("-"*60)
     
     try:
         # 获取 MCP 工具用于生成描述
@@ -51,14 +56,23 @@ async def planning_node(state: PlannerState) -> PlannerState:
             {"role": "user", "content": user_input}
         ]
         
-        log_step("调用 LLM", "开始生成计划...")
-        response = await llm.ainvoke(messages)
+        print("\n🚀 开始调用 LLM...")
         
-        log_step("LLM 响应类型", type(response).__name__)
+        # 使用流式输出
+        full_content = ""
+        async for chunk in llm.astream(messages):
+            if hasattr(chunk, 'content') and chunk.content:
+                print(chunk.content, end='', flush=True)
+                full_content += chunk.content
+        
+        print("\n")  # 换行
+        
+        # 直接使用收集到的完整内容
+        content = full_content
+        log_step("LLM 响应", f"完整内容长度: {len(content)} 字符")
         
         # 解析响应
-        if hasattr(response, 'content') and response.content:
-            content = response.content
+        if content:
             log_step("LLM 返回内容", content[:1000])  # 打印前1000字符
             
             # 尝试解析 JSON 格式的计划
@@ -98,13 +112,7 @@ async def planning_node(state: PlannerState) -> PlannerState:
                 log_step("完整错误堆栈", traceback.format_exc())
                 state["error"] = f"解析计划失败: {str(e)}"
         else:
-            log_step("LLM 响应异常", {
-                "has_content_attr": hasattr(response, 'content'),
-                "content_value": getattr(response, 'content', None),
-                "response_type": type(response).__name__,
-                "has_tool_calls": hasattr(response, 'tool_calls'),
-                "tool_calls": getattr(response, 'tool_calls', None)
-            })
+            log_step("LLM 响应异常", "内容为空")
             state["error"] = "LLM 未返回有效内容"
         
     except Exception as e:
@@ -214,7 +222,12 @@ async def final_answer_node(state: PlannerState) -> PlannerState:
     plan = state.get("plan")
     task_results = state.get("task_results", {})
     
-    log_step("最终答案节点", {"task_results": task_results})
+    print("\n" + "="*60)
+    print("💡 最终答案节点 - 生成答案...")
+    print("="*60)
+    print("\n📊 任务执行摘要:")
+    for task in plan.tasks:
+        print(f"  - 任务 {task.task_id}: {task.status}")
     
     # 构建结果摘要
     summary = []
@@ -235,10 +248,20 @@ async def final_answer_node(state: PlannerState) -> PlannerState:
             {"role": "user", "content": f"任务执行摘要:\n{summary_text}\n\n请生成最终答案。"}
         ]
         
-        response = await llm.ainvoke(messages)
+        print("\n" + "="*60)
+        print("🤖 LLM 生成最终答案:")
+        print("-"*60)
         
-        state["final_answer"] = response.content
-        log_step("最终答案", response.content)
+        # 使用流式输出
+        full_content = ""
+        async for chunk in llm.astream(messages):
+            if hasattr(chunk, 'content') and chunk.content:
+                print(chunk.content, end='', flush=True)
+                full_content += chunk.content
+        
+        print("\n" + "="*60 + "\n")
+        
+        state["final_answer"] = full_content
         
     except Exception as e:
         log_step("最终答案节点错误", str(e))
