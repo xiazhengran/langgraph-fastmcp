@@ -133,6 +133,53 @@ def search_metrics(
         }
 
 
+@mcp.tool()
+def query_sales_summary_detail(
+    metric_name: str,
+    date: str = None,
+    province: str = None,
+    city: str = None
+) -> List[Dict[str, Any]]:
+    """
+    从MySQL数据库中查询dws_sales_summary表的明细数据
+    
+    Args:
+        metric_name: 指标字段名（必填），例如 'negative_review_rate_034' (差评率字段)
+            注意：这是数据库中的字段名，不是指标中文名
+            应先使用 search_metrics 获取标准的字段名
+        date: 时间/日期（选填），支持以下格式：
+            - 单个日期：'2024-01-01'
+            - 年月：'2024-01' 或 '2024-01:01' (查询该月，如2025年1月)
+            - 日期范围：'2024-01-01:2024-01-31' (使用冒号分隔)
+        province: 省份（选填）
+        city: 城市（选填）
+        
+    Returns:
+        查询结果列表，每条记录为一个字典，包含以下字段：
+        - stat_date: 统计日期
+        - country: 国家
+        - province: 省份
+        - city: 城市
+        - [metric_name]: 指标值（字段名取决于传入的metric_name参数）
+        
+    Examples:
+        查询单个日期的差评率:
+        query_sales_summary_detail(metric_name="negative_review_rate_034", date="2024-01-01")
+        
+        查询2025年1月的差评率:
+        query_sales_summary_detail(metric_name="negative_review_rate_034", date="2025-01")
+        
+        查询日期范围:
+        query_sales_summary_detail(metric_name="negative_review_rate_034", date="2024-01-01:2024-01-31", province="广东省", city="深圳市")
+    """
+    return mysql_util.query_dws_sales_summary_detail(
+        metric_name=metric_name,
+        date=date,
+        province=province,
+        city=city
+    )
+
+
 # ============= 服务器启动 =============
 
 if __name__ == "__main__":

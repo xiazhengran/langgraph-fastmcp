@@ -169,6 +169,98 @@ class MysqlUtil:
             return str(result[column])  
         else:
             return "" 
+    def query_dws_sales_summary_detail(
+        self,
+        metric_name: str,
+        date: Optional[str] = None,
+        province: Optional[str] = None,
+        city: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        查询dws_sales_summary表明细数据
+        
+        :param metric_name: 指标字段名（必填），例如 'negative_review_rate_034'
+        :param date: 时间/日期（选填），支持以下格式：
+            - 单个日期：'2024-01-01'
+            - 年月：'2024-01' 或 '2024-01:01' (查询该月)
+            - 日期范围：'2024-01-01:2024-01-31' (使用冒号分隔)
+        :param province: 省份（选填）
+        :param city: 城市（选填）
+        :return: 查询结果列表，每条记录为一个字典
+        """
+        # 构建 SELECT 字段：包含维度字段和指标字段
+        select_fields = [
+            "stat_date",
+            "country",
+            "province",
+            "city",
+            f"`{metric_name}`"
+        ]
+        select_clause = ", ".join(select_fields)
+        
+        # 构建 WHERE 条件
+        conditions = []
+        params = []
+        
+        # 处理日期参数（注意：字段名是 stat_date）
+        if date is not None:
+            if ':' in date:
+                # 处理日期范围
+                date_parts = date.split(':')
+                if len(date_parts) == 2:
+                    # 检查是否是年月格式，如 '2024-01:01'
+                    if date_parts[0].count('-') == 1 and date_parts[1].count('-') == 1:
+                        # 格式：'2024-01:01' 表示某年某月
+                        year = date_parts[0].split('-')[0]
+                        month = date_parts[1].split('-')[0]
+                        start_date = f"{year}-{month}-01"
+                        # 获取该月最后一天
+                        from datetime import datetime
+                        import calendar
+                        last_day = calendar.monthrange(int(year), int(month))[1]
+                        end_date = f"{year}-{month}-{last_day:02d}"
+                        conditions.append("`stat_date` BETWEEN %s AND %s")
+                        params.extend([start_date, end_date])
+                    else:
+                        # 标准日期范围格式：'2024-01-01:2024-01-31'
+                        start_date, end_date = date_parts
+                        conditions.append("`stat_date` BETWEEN %s AND %s")
+                        params.extend([start_date, end_date])
+                else:
+                    raise ValueError(f"无效的日期范围格式: {date}")
+            elif date.count('-') == 1:
+                # 格式：'2024-01' 表示某年某月
+                year, month = date.split('-')
+                start_date = f"{year}-{month}-01"
+                # 获取该月最后一天
+                from datetime import datetime
+                import calendar
+                last_day = calendar.monthrange(int(year), int(month))[1]
+                end_date = f"{year}-{month}-{last_day:02d}"
+                conditions.append("`stat_date` BETWEEN %s AND %s")
+                params.extend([start_date, end_date])
+            else:
+                # 单个日期格式：'2024-01-01'
+                conditions.append("`stat_date` = %s")
+                params.append(date)
+        
+        if province is not None:
+            conditions.append("`province` = %s")
+            params.append(province)
+        
+        if city is not None:
+            conditions.append("`city` = %s")
+            params.append(city)
+        
+        # 构建 WHERE 子句
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        
+        # 构建 SQL 查询
+        sql = f"SELECT {select_clause} FROM `agent_project`.`dws_sales_summary` WHERE {where_clause}"
+        
+        logger.info(f"查询dws_sales_summary表: metric_field={metric_name}, date={date}, province={province}, city={city}")
+        
+        return self.fetch_all(sql, tuple(params))
     
 
 
