@@ -89,7 +89,7 @@ def search_metrics(
     从知识库中检索相关的指标信息
     
     Args:
-        value: 搜索的关键词，例如 "用户活跃度"
+        value: 用户输入的完整内容, 不需要做额外操作
         column_name: 要搜索的字段名，默认为 "metric_name_cn"（指标中文名）
         n_results: 返回结果数量，默认为 3
         
