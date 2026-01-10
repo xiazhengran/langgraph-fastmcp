@@ -82,6 +82,10 @@ OPENAI_MODEL=gpt-4
 MCP_SERVER_COMMAND=python
 MCP_SERVER_ARGS=mcp_server.py
 
+# API 服务配置 (可选)
+API_HOST=0.0.0.0
+API_PORT=8000
+
 # LangSmith 监控配置 (可选)
 LANGSMITH_API_KEY=your-langsmith-api-key-here
 LANGSMITH_PROJECT=langgraph-fastmcp
@@ -97,9 +101,191 @@ LANGSMITH_TRACING=true  # 设置为 false 可禁用监控
 
 ### 3. 运行程序
 
+**方式一: 命令行交互模式**
+
 ```bash
 python agent.py
 ```
+
+**方式二: HTTP 服务模式 (FastAPI)**
+
+```bash
+python app.py
+```
+
+服务默认运行在 `http://0.0.0.0:8898`
+
+## 🌐 HTTP API 服务
+
+启动 FastAPI 服务后,提供以下 REST API 接口:
+
+### 接口列表
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/` | 根路径健康检查 |
+| GET | `/health` | 健康检查端点 |
+| POST | `/chat` | 聊天接口,执行任务并返回结果 |
+| POST | `/chat/stream` | 流式聊天接口 |
+
+### /chat 接口
+
+**请求格式:**
+```json
+{
+  "user_input": "查询差评率2025年1月在江西省南昌市的数据"
+}
+```
+
+**响应格式:**
+```json
+{
+  "success": true,
+  "final_answer": "查询结果...",
+  "tasks": [
+    {
+      "task_id": "task_1",
+      "description": "搜索指标",
+      "tool": "search_metrics",
+      "status": "completed",
+      "result": "...",
+      "error": null
+    },
+    {
+      "task_id": "task_2",
+      "description": "查询数据",
+      "tool": "query_sales_summary_detail",
+      "status": "completed",
+      "result": "...",
+      "error": null
+    }
+  ],
+  "error": null
+}
+```
+
+### /chat/stream 接口 (SSE 流式输出)
+
+**请求格式:**
+```json
+{
+  "user_input": "计算 (3 + 5) * 2 的结果"
+}
+```
+
+**响应格式 (NDJSON - 每行一个 JSON):**
+```
+{"type": "start", "content": "🚀 开始处理: 客单价在哪张表?"}
+{"type": "phase", "content": "📋 规划阶段 - 开始分析用户需求..."}
+{"type": "info", "content": "获取到 5 个可用工具"}
+{"type": "info", "content": "正在调用 LLM 生成任务计划..."}
+{"type": "plan_ready", "content": "✅ 计划生成完成，共 1 个任务"}
+{"type": "task", "content": "[task_1] 搜索客单价指标的相关信息 (工具: search_metrics)"}
+{"type": "phase", "content": "⚡ 执行阶段 - 开始执行 1 个任务"}
+{"type": "executing", "content": "正在执行任务 [task_1]: 搜索客单价指标的相关信息"}
+{"type": "complete", "content": "✅ 任务 [task_1] 完成: {\"results\":[...]}"}
+{"type": "phase", "content": "💡 最终答案阶段 - 正在生成答案..."}
+{"type": "answer", "content": "根"}
+{"type": "answer", "content": "据"}
+{"type": "answer", "content": "任"}
+...
+{"type": "done", "content": "✅ 处理完成，最终答案长度: 186 字符"}
+```
+
+**事件类型:**
+| 类型 | 描述 |
+|------|------|
+| `start` | 开始处理请求 |
+| `phase` | 当前执行阶段 (规划/执行/生成答案) |
+| `info` | 详细信息 |
+| `plan_ready` | 计划生成完成 |
+| `task` | 任务列表 |
+| `executing` | 正在执行任务 |
+| `complete` | 任务执行完成 |
+| `error` | 错误信息 |
+| `answer` | 最终答案逐字输出 |
+| `done` | 处理完成 |
+
+### 调用示例
+
+**cURL (普通接口):**
+```bash
+curl -X POST http://localhost:8898/chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_input": "计算 (3 + 5) * 2 的结果"}'
+```
+
+**cURL (流式接口):**
+```bash
+curl -N -X POST http://localhost:8898/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"user_input": "计算 (3 + 5) * 2 的结果"}'
+```
+
+**Windows CMD 正确调用方式:**
+```cmd
+curl -N -X POST http://localhost:8898/chat/stream -H "Content-Type: application/json" -d "{\"user_input\": \"客单价在哪张表?\"}"
+```
+
+**Windows PowerShell 调用方式:**
+```powershell
+curl -N -X POST http://localhost:8898/chat/stream -H 'Content-Type: application/json' -d '{"user_input": "客单价在哪张表?"}'
+```
+
+**Python (流式):**
+```python
+import httpx
+import json
+
+async def stream_chat():
+    async with httpx.AsyncClient() as client:
+        async with client.stream(
+            "POST",
+            "http://localhost:8898/chat/stream",
+            json={"user_input": "计算 (3 + 5) * 2 的结果"}
+        ) as response:
+            async for line in response.aiter_lines():
+                if line.strip():
+                    data = json.loads(line)
+                    print(f"[{data['type']}] {data['content']}")
+
+# asyncio.run(stream_chat())
+```
+
+> **Windows 注意事项:**
+> - CMD 中需要用 `^` 换行，或者全部写在一行
+> - JSON 中的双引号需要转义为 `\"`
+> - 建议使用 PowerShell 或创建 JSON 文件后用 `-d @filename` 发送
+
+### 浏览器 JavaScript 调用
+
+**普通接口:**
+```javascript
+fetch('http://localhost:8898/chat', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ user_input: "客单价在哪张表?" })
+})
+.then(response => response.json())
+.then(data => console.log('响应数据:', data))
+.catch(error => console.error('请求出错:', error));
+```
+
+**SSE 流式接口:**
+```javascript
+fetch('http://localhost:8898/chat/stream', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({user_input: "我想知道2025年1月5日到2025年7月6日九江市的的客单价?"})
+})
+.then(res => res.text()) // 注意：用 .text() 而不是 .json()
+.then(console.log)
+.catch(console.error);
+```
+
+> **注意:** 在浏览器控制台直接复制粘贴执行即可，确保 FastAPI 服务已启动 (端口 8898)。
 
 ## 💡 使用示例
 

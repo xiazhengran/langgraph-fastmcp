@@ -52,7 +52,8 @@ def query_models_val_detail(task_id: int, column: str) -> str:
 def search_metrics(
     value: str,
     column_name: str = "metric_name_cn",
-    n_results: int = 3
+    n_results: int = 5,
+    rerank: bool = True
 ) -> Dict[str, Any]:
     """
     从知识库中检索相关的指标信息
@@ -60,7 +61,7 @@ def search_metrics(
     Args:
         value: 用户输入的完整内容, 不需要做额外操作
         column_name: 要搜索的字段名，默认为 "metric_name_cn"（指标中文名）
-        n_results: 返回结果数量，默认为 3
+        n_results: 返回结果数量，默认为 5
         rerank: 是否对结果进行重排序，默认为 True
         
     Returns:
@@ -79,7 +80,7 @@ def search_metrics(
         "column_name": column_name,
         "value": value,
         "n_results": n_results,
-        "rerank": True
+        "rerank": rerank
     }
     
     try:
