@@ -125,6 +125,149 @@ async def planning_node(state: PlannerState) -> PlannerState:
     return state
 
 
+# ============= 辅助函数 =============
+
+def extract_metric_name(search_result: str) -> str | None:
+    """从 search_metrics 的 JSON 结果中提取 metric_name"""
+    try:
+        import json
+        data = json.loads(search_result)
+        if "results" in data and len(data["results"]) > 0:
+            first_result = data["results"][0]
+            if "metric_name" in first_result:
+                return first_result["metric_name"]
+        return None
+    except Exception as e:
+        log_step("解析 metric_name 失败", str(e))
+        return None
+
+
+def extract_field_from_result(result: str, field: str) -> Any:
+    """从任务结果中提取指定字段"""
+    try:
+        import json
+        data = json.loads(result)
+        if "results" in data and len(data["results"]) > 0:
+            first_result = data["results"][0]
+            if field in first_result:
+                return first_result[field]
+        return result
+    except Exception:
+        return result
+
+
+def resolve_task_dependencies(task_results: dict[str, Any], plan: Plan, task: Task) -> dict[str, Any]:
+    """
+    解析任务参数中的依赖引用，将 ${task_id} 或 ${task_id.field} 格式替换为实际值
+    
+    Args:
+        task_results: 已执行任务的结果字典
+        plan: 任务计划
+        task: 当前任务
+    
+    Returns:
+        resolved_args: 解析后的参数字典
+    """
+    resolved_args = {}
+    
+    for key, value in task.arguments.items():
+        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+            ref_expr = value[2:-1]
+            
+            # 支持两种格式：${task_id} 和 ${task_id.field}
+            if '.' in ref_expr:
+                # 格式：${task_id.field}
+                ref_task_id, ref_field = ref_expr.split('.', 1)
+                if ref_task_id not in task_results:
+                    raise ValueError(f"Task dependency not found: {ref_task_id}")
+                
+                ref_result = task_results[ref_task_id]
+                ref_task_obj = next((t for t in plan.tasks if t.task_id == ref_task_id), None)
+                
+                # 如果依赖的是 search_metrics 且指定了 field，从结果中提取对应字段
+                if ref_task_obj and ref_task_obj.tool == "search_metrics":
+                    resolved_value = extract_field_from_result(str(ref_result), ref_field)
+                    log_step(f"从 {ref_task_id}.{ref_field} 提取值", resolved_value)
+                    resolved_args[key] = resolved_value
+                else:
+                    resolved_args[key] = ref_result
+            else:
+                # 格式：${task_id}
+                ref_task_id = ref_expr
+                if ref_task_id not in task_results:
+                    raise ValueError(f"Task dependency not found: {ref_task_id}")
+                
+                ref_result = task_results[ref_task_id]
+                ref_task = next((t for t in plan.tasks if t.task_id == ref_task_id), None)
+                
+                # 如果依赖的是 search_metrics 结果，自动提取 metric_name
+                if ref_task and ref_task.tool == "search_metrics":
+                    metric_name = extract_metric_name(str(ref_result))
+                    if metric_name:
+                        resolved_args[key] = metric_name
+                        log_step(f"从 {ref_task_id} 提取 metric_name", metric_name)
+                    else:
+                        resolved_args[key] = ref_result
+                else:
+                    resolved_args[key] = ref_result
+        else:
+            resolved_args[key] = value
+    
+    return resolved_args
+
+
+def auto_add_dependencies(plan: Plan) -> None:
+    """
+    预处理：分析任务参数中的依赖引用，自动添加到 depends_on
+    
+    Args:
+        plan: 任务计划
+    """
+    for task in plan.tasks:
+        for value in task.arguments.values():
+            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+                ref_expr = value[2:-1]
+                ref_task_id = ref_expr.split('.')[0]
+                if ref_task_id != task.task_id and ref_task_id not in task.depends_on:
+                    task.depends_on.append(ref_task_id)
+                    log_step(f"自动添加依赖", f"{task.task_id} -> {ref_task_id}")
+
+
+async def ensure_search_metrics(tools: list, metric_input: str) -> str:
+    """
+    确保 search_metrics 已执行，返回 metric_name
+    
+    Args:
+        tools: 可用的工具列表
+        metric_input: 指标输入值
+    
+    Returns:
+        metric_name: 提取的 metric_name
+    """
+    search_tool = next((t for t in tools if t.name == "search_metrics"), None)
+    if not search_tool:
+        log_step("search_metrics 工具未找到", "使用原始输入")
+        return metric_input
+    
+    log_step("执行 search_metrics", f"查询指标: {metric_input}")
+    search_result = await search_tool.ainvoke({
+        "value": metric_input,
+        "column_name": "metric_name_cn",
+        "n_results": 1
+    })
+    log_step("search_metrics 结果", search_result)
+    
+    metric_name = extract_metric_name(str(search_result))
+    if metric_name:
+        log_step("提取 metric_name", f"{metric_input} -> {metric_name}")
+        return metric_name
+    else:
+        log_step("未找到匹配的 metric_name", f"使用原始输入: {metric_input}")
+        return metric_input
+
+
+# ============= 节点函数 =============
+
 async def execution_node(state: PlannerState) -> PlannerState:
     """
     执行节点: 使用 ToolNode 执行工具调用
@@ -144,72 +287,8 @@ async def execution_node(state: PlannerState) -> PlannerState:
         task_results = state.get("task_results", {})
         executed_tasks = set()
         
-        # 预处理：分析任务参数中的依赖引用，自动添加到 depends_on
-        for task in plan.tasks:
-            for value in task.arguments.values():
-                if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-                    ref_expr = value[2:-1]
-                    # 提取 task_id（支持 task_id 和 task_id.field 格式）
-                    ref_task_id = ref_expr.split('.')[0]
-                    # 如果引用的任务不在 depends_on 中，添加进去
-                    if ref_task_id != task.task_id and ref_task_id not in task.depends_on:
-                        task.depends_on.append(ref_task_id)
-                        log_step(f"自动添加依赖", f"{task.task_id} -> {ref_task_id}")
-        
-        # 辅助函数：从 search_metrics 结果中解析 metric_name
-        def extract_metric_name(search_result: str) -> str:
-            """从 search_metrics 的 JSON 结果中提取 metric_name"""
-            try:
-                import json
-                data = json.loads(search_result)
-                if "results" in data and len(data["results"]) > 0:
-                    first_result = data["results"][0]
-                    if "metric_name" in first_result:
-                        return first_result["metric_name"]
-                return None
-            except Exception as e:
-                log_step("解析 metric_name 失败", str(e))
-                return None
-        
-        # 辅助函数：检查是否需要自动执行 search_metrics
-        async def ensure_search_metrics(metric_input: str) -> str:
-            """确保 search_metrics 已执行，返回 metric_name"""
-            # 检查是否已有 search_metrics 任务执行过
-            for executed_task_id in executed_tasks:
-                result = task_results.get(executed_task_id)
-                if result and not isinstance(result, dict) or "error" not in result:
-                    try:
-                        # 尝试从结果中提取 metric_name
-                        metric_name = extract_metric_name(str(result))
-                        if metric_name:
-                            log_step("从已有任务复用 metric_name", metric_name)
-                            return metric_name
-                    except:
-                        pass
-            
-            # 没有找到，执行 search_metrics
-            log_step("执行 search_metrics", f"查询指标: {metric_input}")
-            search_tool = next((t for t in tools if t.name == "search_metrics"), None)
-            if search_tool:
-                search_result = await search_tool.ainvoke({
-                    "value": metric_input,
-                    "column_name": "metric_name_cn",
-                    "n_results": 1
-                })
-                
-                log_step("search_metrics 结果", search_result)
-                
-                # 提取 metric_name
-                metric_name = extract_metric_name(str(search_result))
-                if metric_name:
-                    log_step("提取 metric_name", f"{metric_input} -> {metric_name}")
-                    return metric_name
-                else:
-                    log_step("未找到匹配的 metric_name", f"使用原始输入: {metric_input}")
-                    return metric_input
-            else:
-                log_step("search_metrics 工具未找到", "使用原始输入")
-                return metric_input
+        # 预处理：自动分析并添加任务依赖
+        auto_add_dependencies(plan)
         
         # 按依赖顺序执行任务
         while len(executed_tasks) < len(plan.tasks):
@@ -235,68 +314,14 @@ async def execution_node(state: PlannerState) -> PlannerState:
                 
                 try:
                     # 解析参数中的依赖引用
-                    resolved_args = {}
-                    for key, value in task.arguments.items():
-                        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-                            ref_expr = value[2:-1]
-                            
-                            # 支持两种格式：${task_id} 和 ${task_id.field}
-                            if '.' in ref_expr:
-                                # 格式：${task_id.field}
-                                ref_task_id, ref_field = ref_expr.split('.', 1)
-                                if ref_task_id in task_results:
-                                    ref_result = task_results[ref_task_id]
-                                    ref_task_obj = next((t for t in plan.tasks if t.task_id == ref_task_id), None)
-                                    
-                                    # 如果依赖的是 search_metrics 且指定了 field，提取对应字段
-                                    if ref_task_obj and ref_task_obj.tool == "search_metrics":
-                                        try:
-                                            import json
-                                            data = json.loads(str(ref_result))
-                                            if "results" in data and len(data["results"]) > 0:
-                                                first_result = data["results"][0]
-                                                if ref_field in first_result:
-                                                    resolved_args[key] = first_result[ref_field]
-                                                    log_step(f"从 {ref_task_id}.{ref_field} 提取值", first_result[ref_field])
-                                                else:
-                                                    log_step(f"字段 {ref_field} 不存在", f"可用字段: {list(first_result.keys())}")
-                                                    resolved_args[key] = ref_result
-                                            else:
-                                                resolved_args[key] = ref_result
-                                        except:
-                                            resolved_args[key] = ref_result
-                                    else:
-                                        resolved_args[key] = ref_result
-                                else:
-                                    raise ValueError(f"Task dependency not found: {ref_task_id}")
-                            else:
-                                # 格式：${task_id}
-                                ref_task_id = ref_expr
-                                if ref_task_id in task_results:
-                                    # 如果依赖的是 search_metrics 结果，需要提取 metric_name
-                                    ref_result = task_results[ref_task_id]
-                                    ref_task = next((t for t in plan.tasks if t.task_id == ref_task_id), None)
-                                    if ref_task and ref_task.tool == "search_metrics":
-                                        metric_name = extract_metric_name(str(ref_result))
-                                        if metric_name:
-                                            resolved_args[key] = metric_name
-                                            log_step(f"从 {ref_task_id} 提取 metric_name", metric_name)
-                                        else:
-                                            resolved_args[key] = ref_result
-                                    else:
-                                        resolved_args[key] = ref_result
-                                else:
-                                    raise ValueError(f"Task dependency not found: {ref_task_id}")
-                        else:
-                            resolved_args[key] = value
+                    resolved_args = resolve_task_dependencies(task_results, plan, task)
                     
-                    # 特殊处理：如果使用 query_sales_summary_detail 且 metric_name 不是依赖引用
+                    # 特殊处理：query_sales_summary_detail 需要查询 metric_name
                     if task.tool == "query_sales_summary_detail":
                         metric_name_input = resolved_args.get("metric_name", "")
-                        # 如果 metric_name 是字符串且不是依赖引用，自动调用 search_metrics
                         if isinstance(metric_name_input, str) and not metric_name_input.startswith("${"):
                             log_step("自动调用 search_metrics", f"需要查询指标: {metric_name_input}")
-                            resolved_args["metric_name"] = await ensure_search_metrics(metric_name_input)
+                            resolved_args["metric_name"] = await ensure_search_metrics(tools, metric_name_input)
                     
                     # 找到对应的工具
                     tool = next((t for t in tools if t.name == task.tool), None)
@@ -364,9 +389,10 @@ async def final_answer_node(state: PlannerState) -> PlannerState:
     
     try:
         llm = get_llm(temperature=0.3)
+        user_input = state.get("user_input", "")
         messages = [
             {"role": "system", "content": "请根据所有子任务的执行结果,生成最终答案。要求简洁明了,包含关键信息。"},
-            {"role": "user", "content": f"任务执行摘要:\n{summary_text}\n\n请生成最终答案。"}
+            {"role": "user", "content": f"用户原始问题: {user_input}\n\n根据任务执行摘要,请生成用户想要了解的最终答案。\n\n任务执行摘要:\n{summary_text}"}
         ]
         
         print("\n" + "="*60)

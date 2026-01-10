@@ -15,37 +15,6 @@ mcp = FastMCP("langgraph-mcp-tools")
 
 
 # ============= 工具定义 =============
-
-@mcp.tool()
-def add(a: float, b: float) -> float:
-    """
-    执行两个数字的加法运算
-    
-    Args:
-        a: 第一个加数
-        b: 第二个加数
-        
-    Returns:
-        两数之和
-    """
-    return a + b
-
-
-@mcp.tool()
-def multiply(a: float, b: float) -> float:
-    """
-    执行两个数字的乘法运算
-    
-    Args:
-        a: 第一个乘数
-        b: 第二个乘数
-        
-    Returns:
-        两数之积
-    """
-    return a * b
-
-
 @mcp.tool()
 def concat_and_md5_truncate(str1: str, str2: str, length: int = 32) -> str:
     """
@@ -92,6 +61,7 @@ def search_metrics(
         value: 用户输入的完整内容, 不需要做额外操作
         column_name: 要搜索的字段名，默认为 "metric_name_cn"（指标中文名）
         n_results: 返回结果数量，默认为 3
+        rerank: 是否对结果进行重排序，默认为 True
         
     Returns:
         包含检索结果的字典，每个结果包含：
@@ -108,7 +78,8 @@ def search_metrics(
     payload = {
         "column_name": column_name,
         "value": value,
-        "n_results": n_results
+        "n_results": n_results,
+        "rerank": True
     }
     
     try:
