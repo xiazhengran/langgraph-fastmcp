@@ -6,6 +6,7 @@
 import asyncio
 import os
 from mcp import StdioServerParameters
+from loguru import logger
 
 from states import PlannerState
 from planner import create_planner_graph
@@ -16,9 +17,9 @@ from utils import log_step
 async def main():
     """主函数"""
     
-    print("\n" + "="*60)
-    print("🚀 LangGraph + MCP 智能代理系统")
-    print("="*60 + "\n")
+    logger.info(f"\n{'='*60}")
+    logger.info("🚀 LangGraph + MCP 智能代理系统")
+    logger.info(f"{'='*60}\n")
     
     # 1. 连接 MCP 服务器
     log_step("初始化", "连接 MCP 服务器...")
@@ -42,12 +43,12 @@ async def main():
     log_step("初始化", "✅ 主图构建完成")
     
     # 3. 获取用户输入
-    print("\n" + "-"*60)
+    logger.info(f"\n{'-'*60}")
     user_input = input("请输入您的需求: ").strip()
-    print("-"*60 + "\n")
+    logger.info(f"{'-'*60}\n")
     
     if not user_input:
-        print("❌ 输入为空,退出程序")
+        logger.error("输入为空,退出程序")
         await mcp_client.close()
         return
     
@@ -65,31 +66,31 @@ async def main():
         final_state = await planner_graph.ainvoke(initial_state)
         
         # 5. 输出结果
-        print("\n" + "="*60)
-        print("📊 执行结果")
-        print("="*60 + "\n")
+        logger.info(f"\n{'='*60}")
+        logger.info("📊 执行结果")
+        logger.info(f"{'='*60}\n")
         
         if final_state.get("error"):
-            print(f"❌ 错误: {final_state['error']}\n")
+            logger.error(f"错误: {final_state['error']}\n")
         else:
-            print(f"✅ 最终答案:\n{final_state.get('final_answer', '无')}\n")
+            logger.success(f"最终答案:\n{final_state.get('final_answer', '无')}\n")
         
         # 显示任务详情
         if final_state.get("plan"):
-            print("\n" + "-"*60)
-            print("📋 任务执行详情")
-            print("-"*60 + "\n")
+            logger.info(f"\n{'-'*60}")
+            logger.info("📋 任务执行详情")
+            logger.info(f"{'-'*60}\n")
             
             for task in final_state["plan"].tasks:
-                print(f"任务 ID: {task.task_id}")
-                print(f"描述: {task.description}")
-                print(f"工具: {task.tool}")
-                print(f"状态: {task.status}")
+                logger.info(f"任务 ID: {task.task_id}")
+                logger.info(f"描述: {task.description}")
+                logger.info(f"工具: {task.tool}")
+                logger.info(f"状态: {task.status}")
                 if task.result:
-                    print(f"结果: {task.result}")
+                    logger.info(f"结果: {task.result}")
                 if task.error:
-                    print(f"错误: {task.error}")
-                print()
+                    logger.error(f"错误: {task.error}")
+                logger.info("")
         
     except Exception as e:
         log_step("执行", f"❌ 执行失败: {str(e)}")
@@ -100,9 +101,9 @@ async def main():
         await mcp_client.close()
         log_step("清理", "✅ 资源清理完成")
     
-    print("\n" + "="*60)
-    print("👋 程序结束")
-    print("="*60 + "\n")
+    logger.info(f"\n{'='*60}")
+    logger.info("👋 程序结束")
+    logger.info(f"{'='*60}\n")
 
 
 if __name__ == "__main__":

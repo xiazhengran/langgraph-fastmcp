@@ -8,6 +8,7 @@ from typing import Dict, Any, Literal
 from langgraph.graph import StateGraph, END, MessagesState
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from loguru import logger
 
 from states import PlannerState, Plan, Task
 from utils import get_llm, log_step
@@ -24,12 +25,12 @@ async def planning_node(state: PlannerState) -> PlannerState:
     """
     user_input = state["user_input"]
     
-    print("\n" + "="*60)
-    print("📋 规划节点 - 开始思考...")
-    print("="*60)
-    print(f"用户输入: {user_input}\n")
-    print("🤔 LLM 思考过程:")
-    print("-"*60)
+    logger.info(f"\n{'='*60}")
+    logger.info("📋 规划节点 - 开始思考...")
+    logger.info(f"{'='*60}")
+    logger.info(f"用户输入: {user_input}\n")
+    logger.info("🤔 LLM 思考过程:")
+    logger.info(f"{'-'*60}")
     
     try:
         # 获取 MCP 工具用于生成描述
@@ -56,16 +57,16 @@ async def planning_node(state: PlannerState) -> PlannerState:
             {"role": "user", "content": user_input}
         ]
         
-        print("\n🚀 开始调用 LLM...")
+        logger.info("\n🚀 开始调用 LLM...")
         
         # 使用流式输出
         full_content = ""
         async for chunk in llm.astream(messages):
             if hasattr(chunk, 'content') and chunk.content:
-                print(chunk.content, end='', flush=True)
+                logger.info(chunk.content, end='', flush=True)
                 full_content += chunk.content
         
-        print("\n")  # 换行
+        logger.info("\n")  # 换行
         
         # 直接使用收集到的完整内容
         content = full_content
@@ -368,12 +369,12 @@ async def final_answer_node(state: PlannerState) -> PlannerState:
     plan = state.get("plan")
     task_results = state.get("task_results", {})
     
-    print("\n" + "="*60)
-    print("💡 最终答案节点 - 生成答案...")
-    print("="*60)
-    print("\n📊 任务执行摘要:")
+    logger.info(f"\n{'='*60}")
+    logger.info("💡 最终答案节点 - 生成答案...")
+    logger.info(f"{'='*60}")
+    logger.info("\n📊 任务执行摘要:")
     for task in plan.tasks:
-        print(f"  - 任务 {task.task_id}: {task.status}")
+        logger.info(f"  - 任务 {task.task_id}: {task.status}")
     
     # 构建结果摘要
     summary = []
@@ -395,18 +396,18 @@ async def final_answer_node(state: PlannerState) -> PlannerState:
             {"role": "user", "content": f"用户原始问题: {user_input}\n\n根据任务执行摘要,请生成用户想要了解的最终答案。\n\n任务执行摘要:\n{summary_text}"}
         ]
         
-        print("\n" + "="*60)
-        print("🤖 LLM 生成最终答案:")
-        print("-"*60)
+        logger.info(f"\n{'='*60}")
+        logger.info("🤖 LLM 生成最终答案:")
+        logger.info(f"{'-'*60}")
         
         # 使用流式输出
         full_content = ""
         async for chunk in llm.astream(messages):
             if hasattr(chunk, 'content') and chunk.content:
-                print(chunk.content, end='', flush=True)
+                logger.info(chunk.content, end='', flush=True)
                 full_content += chunk.content
         
-        print("\n" + "="*60 + "\n")
+        logger.info(f"\n{'='*60}\n")
         
         state["final_answer"] = full_content
         

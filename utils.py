@@ -9,9 +9,53 @@ from typing import Dict, Any, List
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, AIMessage
+from loguru import logger
+import sys
 
 # 加载环境变量
 load_dotenv()
+
+# ============= Loguru 配置 =============
+
+def setup_logger():
+    """
+    配置 Loguru 日志系统
+    """
+    # 移除默认的处理器
+    logger.remove()
+    
+    # 添加控制台输出
+    logger.add(
+        sys.stdout,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level="INFO",
+        colorize=True
+    )
+    
+    # 添加文件输出（所有级别）
+    logger.add(
+        "logs/app.log",
+        rotation="10 MB",
+        retention="7 days",
+        level="DEBUG",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        encoding="utf-8"
+    )
+    
+    # 添加错误日志文件
+    logger.add(
+        "logs/error.log",
+        rotation="10 MB",
+        retention="30 days",
+        level="ERROR",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        encoding="utf-8"
+    )
+    
+    logger.info("日志系统初始化完成")
+
+# 自动初始化日志系统
+setup_logger()
 
 
 # ============= LangSmith 监控 =============
@@ -33,7 +77,7 @@ def setup_langsmith() -> bool:
     langsmith_endpoint = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
     
     if not langsmith_api_key or langsmith_api_key == "your-langsmith-api-key-here":
-        print("⚠️  LangSmith 追踪已启用但未配置 API Key,监控将不可用")
+        logger.warning("LangSmith 追踪已启用但未配置 API Key,监控将不可用")
         return False
     
     # 设置 LangSmith 环境变量
@@ -42,9 +86,9 @@ def setup_langsmith() -> bool:
     os.environ["LANGCHAIN_PROJECT"] = langsmith_project
     os.environ["LANGCHAIN_ENDPOINT"] = langsmith_endpoint
     
-    print(f"✅ LangSmith 监控已启用")
-    print(f"   项目: {langsmith_project}")
-    print(f"   端点: {langsmith_endpoint}")
+    logger.success(f"LangSmith 监控已启用")
+    logger.info(f"   项目: {langsmith_project}")
+    logger.info(f"   端点: {langsmith_endpoint}")
     
     return True
 
@@ -186,11 +230,11 @@ def log_step(step_name: str, data: Any):
         step_name: 步骤名称
         data: 数据
     """
-    print(f"\n{'='*60}")
-    print(f"[{step_name}]")
-    print(f"{'='*60}")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"[{step_name}]")
+    logger.info(f"{'='*60}")
     if isinstance(data, (dict, list)):
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(data, indent=2, ensure_ascii=False))
     else:
-        print(data)
-    print(f"{'='*60}\n")
+        logger.info(data)
+    logger.info(f"{'='*60}\n")
