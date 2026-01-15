@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangGraph MCP Agent - 聊天界面</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 900px;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .api-selector {
+            margin-bottom: 20px;
+        }
+
+        .api-selector label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .api-selector select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .api-selector select:hover {
+            border-color: #667eea;
+        }
+
+        .api-selector select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .input-area {
+            margin-bottom: 20px;
+        }
+
+        .input-area label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .input-area textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 100px;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+
+        .input-area textarea:hover {
+            border-color: #667eea;
+        }
+
+        .input-area textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .result-area {
+            margin-top: 20px;
+        }
+
+        .result-area label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .result-container {
+            background: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 200px;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .result-container.empty {
+            color: #999;
+            font-style: italic;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-bar {
+            padding: 15px 30px;
+            background: #f5f5f5;
+            border-top: 1px solid #e0e0e0;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .status-bar .status {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 20px;
+        }
+
+        .status-bar .status.success {
+            color: #4caf50;
+        }
+
+        .status-bar .status.error {
+            color: #f44336;
+        }
+
+        .status-bar .status.info {
+            color: #2196f3;
+        }
+
+        .event-item {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            background: white;
+        }
+
+        .event-item.phase {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+
+        .event-item.info {
+            background: #f3e5f5;
+            border-left: 4px solid #9c27b0;
+        }
+
+        .event-item.complete {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+        }
+
+        .event-item.error {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+        }
+
+        .event-item.answer {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+
+        .task-list {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .task-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+
+        .task-item.completed {
+            border-left-color: #4caf50;
+        }
+
+        .task-item.failed {
+            border-left-color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 LangGraph MCP Agent</h1>
+            <p>基于 LangGraph 和 MCP 的智能代理系统</p>
+        </div>
+
+        <div class="content">
+            <div class="api-selector">
+                <label for="apiType">选择 API 接口</label>
+                <select id="apiType">
+                    <option value="chat">普通接口 (/chat) - 一次性返回结果</option>
+                    <option value="stream">流式接口 (/chat/stream) - 实时显示进度</option>
+                </select>
+            </div>
+
+            <div class="input-area">
+                <label for="userInput">输入您的问题</label>
+                <textarea id="userInput" placeholder="例如：查询销售额、获取仪表板数据等..."></textarea>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary" id="submitBtn" onclick="submitRequest()">
+                    提交请求
+                </button>
+                <button class="btn btn-secondary" onclick="clearResult()">
+                    清空结果
+                </button>
+            </div>
+
+            <div class="result-area">
+                <label>执行结果</label>
+                <div class="result-container empty" id="resultContainer">
+                    结果将显示在这里...
+                </div>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="status" id="statusBar">
+                <span>就绪</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8898';
+        let isProcessing = false;
+
+        function updateStatus(message, type = 'info') {
+            const statusBar = document.getElementById('statusBar');
+            statusBar.className = `status ${type}`;
+            statusBar.innerHTML = message;
+        }
+
+        function setResultContent(content, isEmpty = false) {
+            const container = document.getElementById('resultContainer');
+            container.innerHTML = content;
+            container.className = isEmpty ? 'result-container empty' : 'result-container';
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendResultContent(content) {
+            const container = document.getElementById('resultContainer');
+            if (container.classList.contains('empty')) {
+                container.classList.remove('empty');
+                container.innerHTML = '';
+            }
+            container.innerHTML += content;
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function formatEvent(event) {
+            const eventType = event.type || 'info';
+            const content = event.content || '';
+            
+            let html = '';
+            
+            switch (eventType) {
+                case 'start':
+                    html = `<div class="event-item phase">🚀 ${content}</div>`;
+                    break;
+                case 'phase':
+                    html = `<div class="event-item phase">📋 ${content}</div>`;
+                    break;
+                case 'info':
+                    html = `<div class="event-item info">ℹ️ ${content}</div>`;
+                    break;
+                case 'task':
+                    html = `<div class="event-item info">📝 ${content}</div>`;
+                    break;
+                case 'executing':
+                    html = `<div class="event-item info">⚙️ ${content}</div>`;
+                    break;
+                case 'complete':
+                    html = `<div class="event-item complete">✅ ${content}</div>`;
+                    break;
+                case 'answer':
+                    html = `<div class="event-item answer">💬 ${content}</div>`;
+                    break;
+                case 'done':
+                    html = `<div class="event-item complete">🎉 ${content}</div>`;
+                    break;
+                case 'error':
+                    html = `<div class="event-item error">❌ ${content}</div>`;
+                    break;
+                default:
+                    html = `<div class="event-item">${content}</div>`;
+            }
+            
+            return html;
+        }
+
+        function formatTasks(tasks) {
+            if (!tasks || tasks.length === 0) return '';
+            
+            let html = '<div class="task-list"><strong>任务列表：</strong>';
+            tasks.forEach(task => {
+                const statusClass = task.status === 'completed' ? 'completed' : 
+                                   task.status === 'failed' ? 'failed' : '';
+                html += `
+                    <div class="task-item ${statusClass}">
+                        <strong>任务 ID:</strong> ${task.task_id}<br>
+                        <strong>描述:</strong> ${task.description}<br>
+                        <strong>工具:</strong> ${task.tool}<br>
+                        <strong>状态:</strong> ${task.status}
+                        ${task.result ? `<br><strong>结果:</strong> ${task.result}` : ''}
+                        ${task.error ? `<br><strong>错误:</strong> ${task.error}` : ''}
+                    </div>
+                `;
+            });
+            html += '</div>';
+            return html;
+        }
+
+        async function submitRequest() {
+            if (isProcessing) {
+                alert('正在处理请求，请稍候...');
+                return;
+            }
+
+            const userInput = document.getElementById('userInput').value.trim();
+            if (!userInput) {
+                alert('请输入您的问题');
+                return;
+            }
+
+            const apiType = document.getElementById('apiType').value;
+            const submitBtn = document.getElementById('submitBtn');
+            
+            isProcessing = true;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="loading"></span>处理中...';
+            
+            setResultContent('', true);
+            updateStatus('<span class="loading"></span>正在处理请求...', 'info');
+
+            try {
+                if (apiType === 'chat') {
+                    await handleChatRequest(userInput);
+                } else {
+                    await handleStreamRequest(userInput);
+                }
+            } catch (error) {
+                console.error('请求失败:', error);
+                setResultContent(`<div class="event-item error">❌ 请求失败: ${error.message}</div>`);
+                updateStatus('请求失败', 'error');
+            } finally {
+                isProcessing = false;
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '提交请求';
+            }
+        }
+
+        async function handleChatRequest(userInput) {
+            updateStatus('发送请求到 /chat 接口...', 'info');
+            
+            const response = await fetch(`${API_BASE_URL}/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ user_input: userInput })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || '请求失败');
+            }
+
+            const data = await response.json();
+            
+            let html = '';
+            
+            if (data.success) {
+                html += `<div class="event-item complete">✅ 请求处理成功</div>`;
+                html += `<div class="event-item answer">💬 最终答案:</div>`;
+                html += `<div class="event-item answer">${data.final_answer}</div>`;
+                
+                if (data.tasks && data.tasks.length > 0) {
+                    html += formatTasks(data.tasks);
+                }
+                
+                updateStatus('请求处理成功', 'success');
+            } else {
+                html += `<div class="event-item error">❌ 请求失败: ${data.error}</div>`;
+                if (data.tasks && data.tasks.length > 0) {
+                    html += formatTasks(data.tasks);
+                }
+                updateStatus('请求处理失败', 'error');
+            }
+            
+            setResultContent(html);
+        }
+
+        async function handleStreamRequest(userInput) {
+            updateStatus('发送请求到 /chat/stream 接口...', 'info');
+            
+            const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ user_input: userInput })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || '请求失败');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                
+                // 保留最后一个不完整的行
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.trim()) {
+                        try {
+                            const event = JSON.parse(line);
+                            appendResultContent(formatEvent(event));
+                            
+                            if (event.type === 'done') {
+                                updateStatus('请求处理成功', 'success');
+                            } else if (event.type === 'error') {
+                                updateStatus('请求处理失败', 'error');
+                            }
+                        } catch (e) {
+                            console.error('解析事件失败:', e, line);
+                        }
+                    }
+                }
+            }
+
+            if (buffer.trim()) {
+                try {
+                    const event = JSON.parse(buffer);
+                    appendResultContent(formatEvent(event));
+                } catch (e) {
+                    console.error('解析最后的事件失败:', e, buffer);
+                }
+            }
+        }
+
+        function clearResult() {
+            setResultContent('结果将显示在这里...', true);
+            updateStatus('就绪', 'info');
+        }
+
+        // 添加键盘快捷键
+        document.getElementById('userInput').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                submitRequest();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -11,6 +11,7 @@ from typing import Optional, AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from mcp import StdioServerParameters
 from loguru import logger
@@ -510,6 +511,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# --- 添加 CORS 中间件 (加在这一块) ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # ⬅️ 允许所有来源访问（开发环境用，生产环境建议指定具体域名）
+    allow_credentials=True,
+    allow_methods=["*"], # ⬅️ 允许所有方法（GET, POST, OPTIONS 等）
+    allow_headers=["*"], # ⬅️ 允许所有头部
+)
+# ------------------------------------
 
 # ============= 请求/响应模型 =============
 
